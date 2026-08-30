@@ -11,17 +11,6 @@ Construir um Hub de Integração em Laravel capaz de:
 
 O sistema deve permitir adicionar novos ERPs sem modificar a lógica principal de sincronização.
 
-O projeto será desenvolvido como um desafio técnico, priorizando:
-
-* Responsabilidade única;
-* Baixo acoplamento;
-* Legibilidade;
-* Reutilização;
-* Testabilidade;
-* Performance;
-* Escalabilidade;
-* Extensibilidade.
-
 ---
 
 # 2. Stack
@@ -46,7 +35,7 @@ A aplicação deverá funcionar sem depender de um serviço externo de banco de 
 
 # 3. Arquitetura
 
-O projeto será composto por dois componentes:
+O projeto será composto por dois componentes principais:
 
 ```text
 ERP Mock
@@ -56,14 +45,27 @@ Vesti Hub
 Vesti API
 ```
 
-Arquitetura:
+O ERP Mock deverá representar os dois ERPs disponíveis no desafio:
+
+```text
+ERP XPTO ──┐
+           ├──→ ERP Mock ──HTTP──→ Vesti Hub ──HTTP──→ Vesti API
+ERP XYZ ───┘
+```
+
+Arquitetura do Hub:
 
 ```text
 ┌──────────────────────────────┐
 │          ERP MOCK            │
 │                              │
-│ GET /erp/produtos.json       │
-│ GET /erp/variacoes.json      │
+│ ERP XPTO                     │
+│ GET /erp/xpto/produtos.json  │
+│ GET /erp/xpto/variacoes.json │
+│                              │
+│ ERP XYZ                      │
+│ GET /erp/xyz/produtos.json   │
+│ GET /erp/xyz/variacoes.json  │
 └──────────────┬───────────────┘
                │
                │ HTTP GET
@@ -96,18 +98,33 @@ Arquitetura:
 
 O ERP Mock será utilizado exclusivamente para simular as APIs dos ERPs durante o desenvolvimento.
 
-Ele deverá expor:
+O Mock deverá representar separadamente os dois ERPs disponíveis.
+
+Endpoints:
+
+### ERP XPTO
 
 ```text
-GET /erp/produtos.json
-GET /erp/variacoes.json
+GET /erp/xpto/produtos.json
+GET /erp/xpto/variacoes.json
 ```
 
-O ERP Mock deverá retornar os dados fornecidos nos arquivos JSON do desafio.
+### ERP XYZ
+
+```text
+GET /erp/xyz/produtos.json
+GET /erp/xyz/variacoes.json
+```
+
+O ERP Mock deverá retornar os dados fornecidos nos arquivos JSON correspondentes ao ERP.
 
 O Hub deverá consumir essas URLs através de HTTP.
 
 O Hub não deve acessar diretamente os arquivos JSON.
+
+O ERP Mock não deverá realizar nenhuma normalização dos dados.
+
+Cada endpoint deverá retornar a estrutura original do respectivo ERP.
 
 ---
 
@@ -257,13 +274,13 @@ Os dados dos dois ERPs deverão resultar no mesmo modelo interno.
 ```text
 XPTO                         XYZ
 ------------------------------------------------
-code              →         referencia
-name              →         nome
-description       →         descricao
-price             →         preco
-price_promotional →         promocao
-composition       →         composicao
-brand              →         marca
+code              →          referencia
+name              →          nome
+description       →          descricao
+price             →          preco
+price_promotional →          promocao
+composition       →          composicao
+brand             →          marca
 ```
 
 Modelo interno:
@@ -285,12 +302,12 @@ brand
 ```text
 XPTO                         XYZ
 ------------------------------------------------
-sku               →         variacao
-size              →         tamanho
-color             →         cor
-quantity          →         quantidade
-unit_measurement  →         unidade
-ordering          →         ordem
+sku               →          variacao
+size              →          tamanho
+color             →          cor
+quantity          →          quantidade
+unit_measurement  →          unidade
+ordering          →          ordem
 ```
 
 Modelo interno:
@@ -312,8 +329,6 @@ Criar DTOs independentes dos ERPs.
 
 ## ProductData
 
-Exemplo conceitual:
-
 ```php
 final readonly class ProductData
 {
@@ -331,8 +346,6 @@ final readonly class ProductData
 ```
 
 ## VariationData
-
-Exemplo conceitual:
 
 ```php
 final readonly class VariationData
@@ -380,7 +393,11 @@ No XYZ:
 
 ```text
 referencia = 8750014
+```
 
+Variação:
+
+```text
 variacao = 8750014_G_PRETA
 ```
 
@@ -388,7 +405,9 @@ O Mapper deve normalizar ambos para:
 
 ```text
 ProductData
+
     code = 8750014
+
     variations = [
         VariationData(
             sku = "8750014_G_PRETA",
@@ -413,6 +432,7 @@ Evitar:
 
 ```text
 para cada produto:
+
     percorrer todas as variações
 ```
 
@@ -436,9 +456,13 @@ O fluxo deverá ser:
 
 ```text
 1. Obter variações;
+
 2. Extrair o código do produto através do SKU;
+
 3. Indexar as variações;
+
 4. Obter produtos;
+
 5. Associar as variações utilizando o índice.
 ```
 
@@ -500,32 +524,6 @@ ProductMapperInterface
 
 Cada implementação deve conhecer somente a estrutura do seu ERP.
 
-Exemplo:
-
-```text
-XPTO
-code
-name
-price
-price_promotional
-       ↓
-XptoProductMapper
-       ↓
-ProductData
-```
-
-```text
-XYZ
-referencia
-nome
-preco
-promocao
-       ↓
-XyzProductMapper
-       ↓
-ProductData
-```
-
 ---
 
 # 14. Cliente ERP
@@ -585,7 +583,7 @@ Fluxo:
 ProductSyncService
         │
         ▼
-ErpClient
+   ErpClient
         │
         ├── produtos
         │
@@ -595,16 +593,19 @@ ErpClient
 Indexação das variações
         │
         ▼
-Mapper
+      Mapper
         │
         ▼
-ProductData
+   ProductData
         │
         ▼
-VestiClient
+VestiPayloadMapper
         │
         ▼
-Vesti API
+    VestiClient
+        │
+        ▼
+    Vesti API
 ```
 
 O serviço não deve implementar diretamente detalhes de HTTP.
@@ -706,10 +707,16 @@ As URLs e credenciais devem ser configuráveis através do `.env`.
 Exemplo:
 
 ```env
-ERP_API_URL=http://erp-mock
+ERP_PROVIDER=xpto
+
+ERP_XPTO_API_URL=http://erp-mock
+ERP_XYZ_API_URL=http://erp-mock
+
 VESTI_API_URL=
 VESTI_API_KEY=
 ```
+
+As URLs finais dos endpoints deverão ser compostas pelo respectivo cliente ERP.
 
 Não armazenar credenciais no código.
 
@@ -727,7 +734,6 @@ Serviços iniciais:
 
 ```yaml
 services:
-
   app:
     # Laravel / PHP
 
@@ -754,13 +760,14 @@ O Hub deve consumir o ERP Mock através da rede interna do Docker.
 Exemplo:
 
 ```env
-ERP_API_URL=http://erp-mock
+ERP_XPTO_API_URL=http://erp-mock
+ERP_XYZ_API_URL=http://erp-mock
 ```
 
 Não utilizar:
 
 ```env
-ERP_API_URL=http://localhost
+ERP_XPTO_API_URL=http://localhost
 ```
 
 para comunicação entre containers.
@@ -768,8 +775,11 @@ para comunicação entre containers.
 O ERP Mock deverá disponibilizar:
 
 ```text
-GET /erp/produtos.json
-GET /erp/variacoes.json
+GET /erp/xpto/produtos.json
+GET /erp/xpto/variacoes.json
+
+GET /erp/xyz/produtos.json
+GET /erp/xyz/variacoes.json
 ```
 
 ---
@@ -780,19 +790,26 @@ Os arquivos fornecidos deverão ser organizados de forma semelhante a:
 
 ```text
 erp-mock/
+
 └── data/
+
     ├── erpxpto/
+
     │   ├── produtos-erp.json
     │   └── variacoes-erp.json
+
     │
     └── erpxyz/
+
         ├── produtos-erp.json
         └── variacoes-erp.json
 ```
 
-O ERP Mock poderá selecionar qual ERP está sendo simulado através de configuração, rota ou outra abordagem simples.
+O ERP Mock deverá manter a separação entre XPTO e XYZ.
 
-A implementação deve deixar clara a separação entre XPTO e XYZ.
+Cada endpoint deverá carregar exclusivamente os arquivos correspondentes ao ERP solicitado.
+
+O ERP Mock não deverá modificar ou normalizar os dados antes de retorná-los.
 
 ---
 
@@ -822,13 +839,13 @@ A sincronização será síncrona:
 
 ```text
 Command
- ↓
+  ↓
 Sync
- ↓
+  ↓
 ERP
- ↓
+  ↓
 Mapper
- ↓
+  ↓
 Vesti
 ```
 
@@ -916,11 +933,17 @@ Testar:
 
 ```text
 code → code
+
 name → name
+
 description → description
+
 price → price
+
 price_promotional → promotionalPrice
+
 composition → composition
+
 brand → brand
 ```
 
@@ -928,10 +951,15 @@ E:
 
 ```text
 sku → sku
+
 size → size
+
 color → color
+
 quantity → quantity
+
 unit_measurement → unitMeasurement
+
 ordering → ordering
 ```
 
@@ -941,11 +969,17 @@ Testar:
 
 ```text
 referencia → code
+
 nome → name
+
 descricao → description
+
 preco → price
+
 promocao → promotionalPrice
+
 composicao → composition
+
 marca → brand
 ```
 
@@ -953,10 +987,15 @@ E:
 
 ```text
 variacao → sku
+
 tamanho → size
+
 cor → color
+
 quantidade → quantity
+
 unidade → unitMeasurement
+
 ordem → ordering
 ```
 
@@ -1063,7 +1102,7 @@ Não criar abstrações sem justificativa.
 
 ## ERP Mock
 
-Simular APIs do ERP.
+Simular APIs dos ERPs XPTO e XYZ.
 
 ## ErpClient
 
@@ -1103,32 +1142,37 @@ Iniciar a sincronização.
 
 ```text
 php artisan products:sync
+
             │
             ▼
+
    ProductSyncService
+
             │
             ▼
+
        ErpClient
+
             │
             ├───────────────┐
             ▼               ▼
-       produtos         variações
+        produtos        variações
             │               │
             └───────┬───────┘
                     ▼
-              Indexação
+                Indexação
                     │
                     ▼
-                 Mapper
+                  Mapper
                     │
                     ▼
-              ProductData
+               ProductData
                     │
                     ▼
-          VestiPayloadMapper
+           VestiPayloadMapper
                     │
                     ▼
-              VestiClient
+               VestiClient
                     │
                     ▼
              POST /products
@@ -1143,6 +1187,7 @@ php artisan products:sync
 
 ```text
 vesti-hub/
+
 │
 ├── app/
 │   ├── Contracts/
@@ -1206,7 +1251,7 @@ A estrutura acima é uma sugestão. Alterações são permitidas quando houver j
 
 A arquitetura deve permitir selecionar qual ERP será utilizado.
 
-Exemplo conceitual:
+Exemplo:
 
 ```env
 ERP_PROVIDER=xpto
@@ -1267,7 +1312,7 @@ ABC ────────┤
        ProductData
             │
             ▼
-     VestiPayloadMapper
+    VestiPayloadMapper
             │
             ▼
         VestiClient
@@ -1314,7 +1359,9 @@ Exemplo:
 
 ```bash
 git clone <repository>
+
 cd vesti-hub
+
 docker compose up -d --build
 ```
 
@@ -1327,8 +1374,11 @@ Explicar `.env`.
 Explicar os endpoints:
 
 ```text
-GET /erp/produtos.json
-GET /erp/variacoes.json
+GET /erp/xpto/produtos.json
+GET /erp/xpto/variacoes.json
+
+GET /erp/xyz/produtos.json
+GET /erp/xyz/variacoes.json
 ```
 
 ## Execução
@@ -1385,8 +1435,8 @@ O projeto deverá:
 1. Iniciar através do Docker Compose;
 2. Executar sem banco de dados;
 3. Disponibilizar o ERP Mock;
-4. Disponibilizar `/erp/produtos.json`;
-5. Disponibilizar `/erp/variacoes.json`;
+4. Disponibilizar os endpoints do ERP XPTO;
+5. Disponibilizar os endpoints do ERP XYZ;
 6. Permitir consumo dessas APIs pelo Hub;
 7. Suportar XPTO;
 8. Suportar XYZ;
@@ -1409,17 +1459,29 @@ O princípio central da aplicação é:
 
 ```text
 SOURCE
+
   ↓
+
 ERP API
+
   ↓
+
 ERP ADAPTER
+
   ↓
+
 NORMALIZATION
+
   ↓
+
 DOMAIN MODEL
+
   ↓
+
 VESTI ADAPTER
+
   ↓
+
 DESTINATION
 ```
 
@@ -1437,13 +1499,13 @@ ERP XYZ ───────┤
 ERP N ─────────┘
                │
                ▼
-         ProductData
+          ProductData
                │
                ▼
-       VestiPayload
+        VestiPayload
                │
                ▼
-          Vesti API
+           Vesti API
 ```
 
 A arquitetura deve favorecer extensibilidade sem introduzir complexidade desnecessária.
