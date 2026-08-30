@@ -134,7 +134,7 @@ Esse comando apenas dispara o fluxo de sincronização; a regra de negócio fica
 Para rodar a suíte completa:
 
 ```bash
-php artisan test
+docker compose exec app php artisan test
 ```
 
 Os testes usam `Http::fake()` para simular o ERP e a Vesti, evitando chamadas reais para a API externa.
