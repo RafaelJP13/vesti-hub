@@ -80,11 +80,13 @@ class ErpProviderResolverTest extends TestCase
     public function test_full_erp_to_vesti_flow_works_with_http_fake(): void
     {
         Http::fake([
-            'http://erp-mock/erp/xpto/produtos.json' => Http::response([
+            'http://erp-mock:8080/erp/xpto/produtos.json' => Http::response([
                 ['code' => 8750014, 'name' => 'SHORT ANTI FIT', 'description' => null, 'price' => '109,90', 'price_promotional' => 66, 'composition' => '100% Algodão', 'brand' => 'Joana Modas'],
+                ['code' => 8750015, 'name' => 'CAMISA TESTE', 'description' => null, 'price' => '89,90', 'price_promotional' => 55, 'composition' => '100% Linho', 'brand' => 'Joana Modas'],
             ], 200),
-            'http://erp-mock/erp/xpto/variacoes.json' => Http::response([
+            'http://erp-mock:8080/erp/xpto/variacoes.json' => Http::response([
                 ['sku' => '8750014_G_PRETA', 'size' => 'G', 'color' => 'PRETA', 'quantity' => 370, 'unit_measurement' => 'UN', 'ordering' => 3],
+                ['sku' => '8750015_M_AZUL', 'size' => 'M', 'color' => 'AZUL', 'quantity' => 120, 'unit_measurement' => 'UN', 'ordering' => 2],
             ], 200),
             'http://vesti-api/v1/products/company/11111111-2222-3333-4444-555555666666' => Http::response([
                 'result' => ['success' => true, 'message' => 'Ok', 'messages' => ''],
@@ -100,14 +102,24 @@ class ErpProviderResolverTest extends TestCase
 
         $results = $service->sync();
 
-        $this->assertCount(1, $results);
+        $this->assertIsArray($results);
+        $this->assertNotEmpty($results);
         $this->assertSame('Ok', $results[0]['result']['message']);
+        $this->assertSame('Ok', $results[1]['result']['message']);
 
         Http::assertSent(function ($request) {
             return $request->method() === 'POST'
                 && $request->url() === 'http://vesti-api/v1/products/company/11111111-2222-3333-4444-555555666666'
+                && is_array($request['products'])
                 && $request['products'][0]['integration_id'] === '8750014'
                 && $request['products'][0]['variations'][0]['sku'] === '8750014_G_PRETA';
+        });
+        Http::assertSent(function ($request) {
+            return $request->method() === 'POST'
+                && $request->url() === 'http://vesti-api/v1/products/company/11111111-2222-3333-4444-555555666666'
+                && is_array($request['products'])
+                && $request['products'][0]['integration_id'] === '8750015'
+                && $request['products'][0]['variations'][0]['sku'] === '8750015_M_AZUL';
         });
     }
 }
