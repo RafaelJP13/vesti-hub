@@ -1,59 +1,161 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Vesti Hub
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplicação Laravel para sincronizar produtos de múltiplos ERPs com a API da Vesti, sem banco de dados, sem Redis e sem filas.
 
-## About Laravel
+## Objetivo
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+O projeto recebe produtos e variações de ERP(s) via HTTP, normaliza as estruturas diferentes para um modelo interno comum e envia os dados para a API da Vesti no formato exigido.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Arquitetura
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+A solução foi estruturada com interfaces e abstrações para manter o núcleo de sincronização independente do ERP escolhido.
 
-## Learning Laravel
+Fluxo principal:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+```text
+ERP Mock
+  ↓ HTTP
+ERP Client
+  ↓
+Product Mapper
+  ↓
+ProductData / VariationData
+  ↓
+ProductSyncService
+  ↓
+VestiPayloadMapper
+  ↓
+VestiClient
+  ↓ HTTP
+Vesti API
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Os ERPs suportados inicialmente são:
 
-## Laravel Sponsors
+- XPTO
+- XYZ
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+A seleção do ERP é centralizada em um resolver/factory para evitar condicionais espalhadas pelo sistema.
 
-### Premium Partners
+## Requisitos
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+- PHP 8.4+
+- Laravel 12
+- Docker + Docker Compose
+- Composer
 
-## Contributing
+## Instalação
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+1. Clone o repositório.
+2. Copie o exemplo de ambiente:
 
-## Code of Conduct
+```bash
+cp .env.example .env
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+3. Ajuste as variáveis de ambiente conforme o ambiente local ou Docker.
+4. Instale dependências do PHP:
 
-## Security Vulnerabilities
+```bash
+composer install
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+5. Para executar com Docker:
 
-## License
+```bash
+docker compose up -d --build
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Configuração
+
+Arquivo base de configuração:
+
+```env
+ERP_PROVIDER=xpto
+ERP_XPTO_API_URL=http://erp-mock
+ERP_XYZ_API_URL=http://erp-mock
+VESTI_API_URL=
+VESTI_API_KEY=
+VESTI_COMPANY_ID=
+```
+
+Observações:
+
+- `ERP_PROVIDER` suporta `xpto` e `xyz`.
+- O projeto não usa banco de dados, Redis, filas ou persistência.
+- As credenciais da Vesti não ficam versionadas no repositório.
+- `VESTI_API_KEY` e `VESTI_COMPANY_ID` são obrigatórias para a integração real com a Vesti.
+
+## Docker
+
+O Compose inicia somente os serviços necessários para o projeto:
+
+```bash
+docker compose config --services
+```
+
+Serviços esperados:
+
+- `app`
+- `erp-mock`
+
+## ERP Mock
+
+O mock expõe os endpoints esperados pelos ERPs:
+
+```text
+GET /erp/xpto/produtos.json
+GET /erp/xpto/variacoes.json
+GET /erp/xyz/produtos.json
+GET /erp/xyz/variacoes.json
+```
+
+O Hub consome esses endpoints exclusivamente via HTTP, sem ler arquivos do disco do projeto.
+
+## Execução da sincronização
+
+Comando principal:
+
+```bash
+php artisan products:sync
+```
+
+Esse comando apenas dispara o fluxo de sincronização; a regra de negócio fica em `ProductSyncService` e nas abstrações de ERP e Vesti.
+
+## Testes
+
+Para rodar a suíte completa:
+
+```bash
+php artisan test
+```
+
+Os testes usam `Http::fake()` para simular o ERP e a Vesti, evitando chamadas reais para a API externa.
+
+## Limitação externa da Vesti
+
+O fluxo real de envio para a Vesti depende de valores externos reais:
+
+- `VESTI_API_KEY`
+- `VESTI_COMPANY_ID`
+- `VESTI_API_URL`
+
+Esses valores não devem ser inventados, nem versionados no repositório. Se forem ausentes, a execução real da integração será bloqueada por configuração externa.
+
+## Uso com IA
+
+Este projeto foi organizado para facilitar a manutenção com ferramentas de IA e revisão automatizada:
+
+- interfaces bem definidas;
+- abstrações por ERP e por plataforma de venda;
+- fluxo centralizado e testável;
+- comando de sincronização enxuto;
+- testes focados em comportamento real.
+
+A IA pode auxiliar na leitura, revisão e manutenção do código sem alterar a arquitetura definida pelo SPEC.
+
+## Observações finais
+
+- Não há MySQL, PostgreSQL, Redis, filas ou persistência no fluxo principal.
+- O projeto foi pensado para múltiplos ERPs sem espalhar condicionais pelo código.
+- A sincronização usa modelos normais (`ProductData` e `VariationData`) e a associação de variações é feita via código extraído do SKU.
