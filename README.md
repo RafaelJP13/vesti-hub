@@ -71,9 +71,11 @@ docker compose up -d --build
 Arquivo base de configuração:
 
 ```env
-ERP_PROVIDER=xpto
-ERP_XPTO_API_URL=http://erp-mock
-ERP_XYZ_API_URL=http://erp-mock
+# URLs internas do Docker
+ERP_XPTO_API_URL=http://erp-mock:8080
+ERP_XYZ_API_URL=http://erp-mock:8080
+
+# Credenciais da Vesti
 VESTI_API_URL=
 VESTI_API_KEY=
 VESTI_COMPANY_ID=
