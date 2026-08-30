@@ -9,7 +9,7 @@ class ErpMockEndpointsTest extends TestCase
 {
     public function test_xpto_products_endpoint_returns_expected_json(): void
     {
-        $response = Http::get('http://localhost:8080/erp/xpto/produtos.json');
+        $response = Http::get('http://erp-mock:8080/erp/xpto/produtos.json');
 
         $response->throw();
         $this->assertSame(200, $response->status());
@@ -20,7 +20,7 @@ class ErpMockEndpointsTest extends TestCase
 
     public function test_xpto_variations_endpoint_returns_expected_json(): void
     {
-        $response = Http::get('http://localhost:8080/erp/xpto/variacoes.json');
+        $response = Http::get('http://erp-mock:8080/erp/xpto/variacoes.json');
 
         $response->throw();
         $this->assertSame(200, $response->status());
@@ -31,7 +31,7 @@ class ErpMockEndpointsTest extends TestCase
 
     public function test_xyz_products_endpoint_returns_expected_json(): void
     {
-        $response = Http::get('http://localhost:8080/erp/xyz/produtos.json');
+        $response = Http::get('http://erp-mock:8080/erp/xyz/produtos.json');
 
         $response->throw();
         $this->assertSame(200, $response->status());
@@ -42,7 +42,7 @@ class ErpMockEndpointsTest extends TestCase
 
     public function test_xyz_variations_endpoint_returns_expected_json(): void
     {
-        $response = Http::get('http://localhost:8080/erp/xyz/variacoes.json');
+        $response = Http::get('http://erp-mock:8080/erp/xyz/variacoes.json');
 
         $response->throw();
         $this->assertSame(200, $response->status());
