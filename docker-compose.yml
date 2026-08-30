@@ -14,8 +14,8 @@ services:
       APP_DEBUG: "true"
       APP_URL: http://localhost:8000
       ERP_PROVIDER: xpto
-      ERP_XPTO_API_URL: http://erp-mock
-      ERP_XYZ_API_URL: http://erp-mock
+      ERP_XPTO_API_URL: http://erp-mock:8080
+      ERP_XYZ_API_URL: http://erp-mock:8080
       VESTI_API_URL: ""
       VESTI_API_KEY: ""
       VESTI_COMPANY_ID: ""
