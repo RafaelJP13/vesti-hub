@@ -8,17 +8,29 @@ services:
     volumes:
       - .:/var/www/html
     ports:
-      - "8000:80"
+      - "8000:8000"
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
       APP_URL: http://localhost:8000
-      PHP_CLI_SERVER_WORKERS: 4
-      CACHE_STORE: file
-      SESSION_DRIVER: file
-      QUEUE_CONNECTION: sync
-    command: >
-      sh -c "php artisan key:generate --force || true &&
-             php artisan optimize:clear &&
-             php -S 0.0.0.0:80 -t public"
+      ERP_PROVIDER: xpto
+      ERP_XPTO_API_URL: http://erp-mock
+      ERP_XYZ_API_URL: http://erp-mock
+      VESTI_API_URL: ""
+      VESTI_API_KEY: ""
+      VESTI_COMPANY_ID: ""
+    depends_on:
+      - erp-mock
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    restart: unless-stopped
+
+  erp-mock:
+    build:
+      context: ./erp-mock
+      dockerfile: Dockerfile
+    container_name: vestihub-erp-mock
+    working_dir: /var/www/html
+    ports:
+      - "8080:8080"
+    command: php -S 0.0.0.0:8080 -t /var/www/html/public
     restart: unless-stopped

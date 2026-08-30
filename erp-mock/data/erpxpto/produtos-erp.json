@@ -1,0 +1,20 @@
+[
+    {
+        "code": 1761095,
+        "name": "SHORT ANTI FIT",
+        "description": null,
+        "price": "109,90",
+        "price_promotional": 66,
+        "composition": "100% Algodão",
+        "brand": "Joana Modas"
+    },
+    {
+        "code": 1761196,
+        "name": "SHORT CURTO",
+        "description": "Short Curto",
+        "price": "109,90",
+        "price_promotional": 86,
+        "composition": "100% Algodão",
+        "brand": "Joana Modas"
+    }
+]

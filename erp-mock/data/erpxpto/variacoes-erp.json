@@ -1,0 +1,18 @@
+[
+    {
+        "sku": "8750014_G_PRETA",
+        "size": "G",
+        "color": "PRETA",
+        "quantity": 370,
+        "unit_measurement": "UN",
+        "ordering": 3
+    },
+    {
+        "sku": "8750014_GG_PRETA",
+        "size": "GG",
+        "color": "PRETA",
+        "quantity": 304,
+        "unit_measurement": "UN",
+        "ordering": 4
+    }
+]
