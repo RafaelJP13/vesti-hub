@@ -7,7 +7,8 @@ Construir um Hub de Integração em Laravel capaz de:
 1. Consumir APIs de diferentes sistemas ERP;
 2. Obter produtos e suas variações;
 3. Normalizar estruturas diferentes de ERP para um modelo interno comum;
-4. Enviar os produtos normalizados para a API da Vesti.
+4. Transformar o modelo interno para o formato esperado pela API da Vesti;
+5. Enviar os produtos normalizados para a API da Vesti.
 
 O sistema deve permitir adicionar novos ERPs sem modificar a lógica principal de sincronização.
 
@@ -82,6 +83,8 @@ Arquitetura do Hub:
 │      ↓                       │
 │ ProductSyncService           │
 │      ↓                       │
+│ VestiPayloadMapper            │
+│      ↓                       │
 │ VestiClient                  │
 └──────────────┬───────────────┘
                │
@@ -100,16 +103,14 @@ O ERP Mock será utilizado exclusivamente para simular as APIs dos ERPs durante 
 
 O Mock deverá representar separadamente os dois ERPs disponíveis.
 
-Endpoints:
-
-### ERP XPTO
+## ERP XPTO
 
 ```text
 GET /erp/xpto/produtos.json
 GET /erp/xpto/variacoes.json
 ```
 
-### ERP XYZ
+## ERP XYZ
 
 ```text
 GET /erp/xyz/produtos.json
@@ -134,6 +135,7 @@ Existem dois ERPs:
 
 ```text
 ERP XPTO
+
 ERP XYZ
 ```
 
@@ -274,13 +276,13 @@ Os dados dos dois ERPs deverão resultar no mesmo modelo interno.
 ```text
 XPTO                         XYZ
 ------------------------------------------------
-code              →          referencia
-name              →          nome
-description       →          descricao
-price             →          preco
-price_promotional →          promocao
-composition       →          composicao
-brand             →          marca
+code                  →      referencia
+name                  →      nome
+description           →      descricao
+price                 →      preco
+price_promotional     →      promocao
+composition           →      composicao
+brand                 →      marca
 ```
 
 Modelo interno:
@@ -302,12 +304,12 @@ brand
 ```text
 XPTO                         XYZ
 ------------------------------------------------
-sku               →          variacao
-size              →          tamanho
-color             →          cor
-quantity          →          quantidade
-unit_measurement  →          unidade
-ordering          →          ordem
+sku                   →      variacao
+size                  →      tamanho
+color                 →      cor
+quantity              →      quantidade
+unit_measurement      →      unidade
+ordering              →      ordem
 ```
 
 Modelo interno:
@@ -361,11 +363,44 @@ final readonly class VariationData
 }
 ```
 
-Os tipos definitivos devem ser ajustados conforme os dados reais e o contrato da API Vesti.
+Os tipos definitivos devem ser ajustados conforme os dados reais.
 
-O domínio não deve conhecer `code`, `referencia`, `name`, `nome`, etc. como conceitos diferentes.
+O modelo interno não deve depender da estrutura específica de nenhum ERP.
+
+O domínio não deve conhecer:
+
+```text
+code
+referencia
+name
+nome
+price
+preco
+```
+
+como conceitos diferentes.
 
 Após a normalização, deve existir somente o modelo interno.
+
+Não adicionar ao modelo interno campos específicos da Vesti que não existam nos dados dos ERPs.
+
+Por exemplo, não adicionar:
+
+```text
+weight
+height
+width
+length
+location
+categories
+barcode
+color_code
+color_integration_id
+```
+
+somente para reproduzir o payload da Vesti.
+
+Esses campos pertencem à camada de integração com a Vesti quando aplicável.
 
 ---
 
@@ -375,16 +410,17 @@ O relacionamento deve utilizar o identificador contido no SKU/variação.
 
 Exemplo:
 
-```text
 Produto:
 
+```text
 code = 8750014
 ```
 
-Variação:
+Variações:
 
 ```text
-sku = 8750014_G_PRETA
+8750014_G_PRETA
+8750014_GG_PRETA
 ```
 
 O código do produto corresponde ao primeiro segmento do SKU.
@@ -401,23 +437,31 @@ Variação:
 variacao = 8750014_G_PRETA
 ```
 
-O Mapper deve normalizar ambos para:
+O Mapper deverá conseguir extrair:
+
+```text
+8750014
+```
+
+da variação.
+
+O resultado deverá ser:
 
 ```text
 ProductData
 
-    code = 8750014
+code = 8750014
 
-    variations = [
-        VariationData(
-            sku = "8750014_G_PRETA",
-            size = "G",
-            color = "PRETA",
-            quantity = 370,
-            unitMeasurement = "UN",
-            ordering = 3
-        )
-    ]
+variations = [
+    VariationData(
+        sku = "8750014_G_PRETA",
+        size = "G",
+        color = "PRETA",
+        quantity = 370,
+        unitMeasurement = "UN",
+        ordering = 3
+    )
+]
 ```
 
 O relacionamento não deve depender do nome do produto.
@@ -432,7 +476,6 @@ Evitar:
 
 ```text
 para cada produto:
-
     percorrer todas as variações
 ```
 
@@ -474,7 +517,7 @@ Isso evita buscas repetitivas e melhora o desempenho para grandes volumes.
 
 A aplicação deverá utilizar abstrações para permitir N ERPs.
 
-Criar contratos semelhantes a:
+Criar:
 
 ```php
 interface ErpClientInterface
@@ -508,7 +551,7 @@ Criar implementações específicas:
 
 ```text
 ErpClientInterface
-│
+
 ├── XptoErpClient
 └── XyzErpClient
 ```
@@ -517,12 +560,48 @@ E:
 
 ```text
 ProductMapperInterface
-│
+
 ├── XptoProductMapper
 └── XyzProductMapper
 ```
 
 Cada implementação deve conhecer somente a estrutura do seu ERP.
+
+Exemplo:
+
+```text
+XPTO
+
+code
+name
+price
+price_promotional
+
+       ↓
+
+XptoProductMapper
+
+       ↓
+
+ProductData
+```
+
+```text
+XYZ
+
+referencia
+nome
+preco
+promocao
+
+       ↓
+
+XyzProductMapper
+
+       ↓
+
+ProductData
+```
 
 ---
 
@@ -536,6 +615,8 @@ Responsabilidades:
 * Fazer GET das variações;
 * Configurar timeout;
 * Tratar erros HTTP;
+* Tratar falhas de conexão;
+* Validar resposta JSON;
 * Retornar os dados recebidos.
 
 Não deve:
@@ -543,6 +624,7 @@ Não deve:
 * Normalizar dados;
 * Conhecer a Vesti;
 * Criar produtos;
+* Implementar regras de relacionamento;
 * Implementar regras de negócio.
 
 ---
@@ -563,7 +645,8 @@ Não deve:
 
 * Fazer requisições HTTP;
 * Enviar produtos para Vesti;
-* Controlar o processo de sincronização.
+* Controlar o processo de sincronização;
+* Conhecer detalhes da API Vesti.
 
 ---
 
@@ -602,13 +685,15 @@ Indexação das variações
 VestiPayloadMapper
         │
         ▼
-    VestiClient
+   VestiClient
         │
         ▼
     Vesti API
 ```
 
 O serviço não deve implementar diretamente detalhes de HTTP.
+
+O serviço deve trabalhar com interfaces sempre que houver necessidade de substituição ou extensão.
 
 ---
 
@@ -625,64 +710,245 @@ Implementando:
 ```php
 interface SalesPlatformInterface
 {
-    public function createProduct(ProductData $product): array;
+    public function createProducts(array $products): array;
+}
+```
+
+A operação deverá aceitar uma coleção de produtos, pois o endpoint da Vesti recebe:
+
+```json
+{
+    "products": [
+        {}
+    ]
 }
 ```
 
 O cliente deverá utilizar o HTTP Client do Laravel.
 
+O cliente será responsável exclusivamente pela comunicação com a API Vesti.
+
+Não deve conhecer estruturas específicas de XPTO ou XYZ.
+
 ---
 
 # 18. API Vesti
 
-Utilizar a documentação oficial fornecida no desafio:
+A integração deverá utilizar o endpoint real fornecido pela documentação da Vesti:
 
 ```text
-POST /products
+POST /v1/products/company/{company_id}
 ```
 
-Documentação:
+A URL será composta por:
 
-https://integracao.meuvesti.com/doc/api/index.html#api-Produtos-post_products
+```text
+VESTI_API_URL
++
+/v1/products/company/{company_id}
+```
 
-Antes da implementação do cliente, analisar a documentação para determinar:
+Autenticação:
 
-* URL;
-* Método;
-* Autenticação;
-* Headers;
-* Payload;
-* Campos obrigatórios;
-* Campos opcionais;
-* Estrutura das variações;
-* Respostas de sucesso;
-* Respostas de erro.
+```http
+apikey: {token}
+```
 
-Não inventar campos que não estejam presentes no contrato da API.
+Header:
+
+```http
+Content-Type: application/json
+```
+
+Payload:
+
+```json
+{
+    "products": [
+        {
+            "integration_id": "123",
+            "code": "123",
+            "name": "Produto teste",
+            "active": true,
+            "description": "Produto X",
+            "full_description": "",
+            "composition": "100% algodão",
+            "brand": "Marca 01",
+            "release_at": "2025-10-15 10:30:00",
+            "price": 120.5,
+            "promotion": true,
+            "price_promotional": 115.8,
+            "weight": 400,
+            "height": 10,
+            "width": 20,
+            "length": 30,
+            "location": "Pratileira",
+            "categories": [
+                "0001_1_1"
+            ],
+            "order_colors": [
+                {
+                    "color": "BRANCO",
+                    "order": 2
+                }
+            ],
+            "variations": [
+                {
+                    "sku": "123_P_BRANCO",
+                    "size": "P",
+                    "color": "BRANCO",
+                    "quantity": 10,
+                    "order": 1,
+                    "unit_type": "PÇ",
+                    "barcode": "7891000000019"
+                }
+            ]
+        }
+    ]
+}
+```
+
+A implementação deverá utilizar somente os campos necessários e suportados pelo contrato da Vesti.
+
+Não inventar valores para campos que não estão disponíveis nos dados dos ERPs.
 
 ---
 
 # 19. Separação do payload da Vesti
 
-O modelo interno não deve necessariamente ser igual ao payload da Vesti.
+O modelo interno não deve ser igual ao payload da Vesti.
 
-A aplicação deverá separar:
+O fluxo será:
 
 ```text
 ERP
+ ↓
+ERP Client
  ↓
 ERP Mapper
  ↓
 ProductData
  ↓
-Vesti Payload Mapper
+VestiPayloadMapper
+ ↓
+Vesti Payload
+ ↓
+VestiClient
  ↓
 Vesti API
 ```
 
-Caso o contrato da Vesti exija uma estrutura diferente, criar um componente específico para transformar `ProductData` no payload da Vesti.
+Criar:
 
-Isso evita acoplar o domínio ao formato externo da API.
+```text
+VestiPayloadMapper
+```
+
+Responsável por transformar `ProductData` no formato esperado pela API Vesti.
+
+Exemplo:
+
+```text
+ProductData
+     ↓
+VestiPayloadMapper
+     ↓
+Vesti Product Payload
+```
+
+Mapeamento conceitual:
+
+```text
+ProductData.code
+        ↓
+Vesti.integration_id / code
+
+ProductData.name
+        ↓
+Vesti.name
+
+ProductData.description
+        ↓
+Vesti.description
+
+ProductData.price
+        ↓
+Vesti.price
+
+ProductData.promotionalPrice
+        ↓
+Vesti.price_promotional
+```
+
+A aplicação poderá derivar:
+
+```text
+promotionalPrice != null
+        ↓
+promotion = true
+```
+
+Caso não exista preço promocional:
+
+```text
+promotionalPrice == null
+        ↓
+promotion = false
+```
+
+A variação deverá ser transformada:
+
+```text
+VariationData
+        ↓
+Vesti Variation Payload
+```
+
+Mapeamento:
+
+```text
+sku
+ ↓
+sku
+
+size
+ ↓
+size
+
+color
+ ↓
+color
+
+quantity
+ ↓
+quantity
+
+unitMeasurement
+ ↓
+unit_type
+
+ordering
+ ↓
+order
+```
+
+Campos da Vesti que não possuem correspondência nos dados dos ERPs não devem receber valores fictícios.
+
+Exemplos:
+
+```text
+barcode
+color_code
+color_integration_id
+weight
+height
+width
+length
+location
+categories
+```
+
+Esses campos somente deverão ser enviados se houver uma fonte definida para seus valores.
 
 ---
 
@@ -698,13 +964,19 @@ O Command deve apenas iniciar o processo de sincronização.
 
 Não colocar regras de negócio no Command.
 
+Fluxo:
+
+```text
+Command
+   ↓
+ProductSyncService
+```
+
 ---
 
 # 21. Configuração
 
 As URLs e credenciais devem ser configuráveis através do `.env`.
-
-Exemplo:
 
 ```env
 ERP_PROVIDER=xpto
@@ -714,11 +986,36 @@ ERP_XYZ_API_URL=http://erp-mock
 
 VESTI_API_URL=
 VESTI_API_KEY=
+VESTI_COMPANY_ID=
 ```
 
 As URLs finais dos endpoints deverão ser compostas pelo respectivo cliente ERP.
 
-Não armazenar credenciais no código.
+Exemplo:
+
+```text
+ERP_XPTO_API_URL
+    +
+/erp/xpto/produtos.json
+
+ERP_XPTO_API_URL
+    +
+/erp/xpto/variacoes.json
+```
+
+E:
+
+```text
+ERP_XYZ_API_URL
+    +
+/erp/xyz/produtos.json
+
+ERP_XYZ_API_URL
+    +
+/erp/xyz/variacoes.json
+```
+
+A API Key da Vesti nunca deverá ser armazenada diretamente no código.
 
 Não versionar o `.env`.
 
@@ -734,6 +1031,7 @@ Serviços iniciais:
 
 ```yaml
 services:
+
   app:
     # Laravel / PHP
 
@@ -825,7 +1123,7 @@ O projeto não deverá criar persistência para:
 * Jobs;
 * Histórico.
 
-Os dados serão obtidos das APIs do ERP e enviados à Vesti.
+Os dados serão obtidos das APIs dos ERPs e enviados à Vesti.
 
 Logs deverão utilizar o mecanismo de logs do Laravel.
 
@@ -845,6 +1143,8 @@ Sync
 ERP
   ↓
 Mapper
+  ↓
+VestiPayloadMapper
   ↓
 Vesti
 ```
@@ -868,6 +1168,37 @@ A implementação deve:
 * Reutilizar clientes HTTP;
 * Manter responsabilidades separadas.
 
+O envio para a Vesti deverá permitir processamento em lotes.
+
+Exemplo conceitual:
+
+```text
+50.000 produtos
+
+        ↓
+
+Lote 1
+Lote 2
+Lote 3
+...
+```
+
+Cada lote poderá ser enviado através do payload:
+
+```json
+{
+    "products": [
+        {},
+        {},
+        {}
+    ]
+}
+```
+
+O tamanho do lote deverá ser configurável posteriormente caso necessário.
+
+Essa estratégia não implica utilização de Jobs ou Queues.
+
 O sistema deve ser projetado para possibilitar evolução futura para:
 
 * Processamento em lotes;
@@ -885,7 +1216,9 @@ Essas funcionalidades não fazem parte da primeira versão.
 
 Tratar:
 
-* Timeout do ERP;
+## ERP
+
+* Timeout;
 * Falha de conexão;
 * HTTP 4xx;
 * HTTP 5xx;
@@ -893,13 +1226,45 @@ Tratar:
 * Campos obrigatórios ausentes;
 * Produto inválido;
 * Variação inválida;
-* Falha de transformação;
-* Timeout da Vesti;
-* Erros HTTP da Vesti.
+* Falha de transformação.
 
-Configurar timeout para chamadas HTTP.
+## Vesti
 
-Retry poderá ser utilizado para falhas temporárias, como HTTP 5xx ou erros de conexão, desde que não gere duplicidade de cadastro.
+* Timeout;
+* Falha de conexão;
+* HTTP 4xx;
+* HTTP 5xx;
+* JSON inválido;
+* Resposta indicando falha da operação.
+
+A resposta esperada da Vesti possui estrutura semelhante a:
+
+```json
+{
+    "result": {
+        "success": true,
+        "message": "Ok",
+        "messages": ""
+    },
+    "statusCode": 200
+}
+```
+
+O sistema não deverá considerar uma operação bem-sucedida apenas porque o HTTP status foi `200`.
+
+Também deverá verificar o campo:
+
+```text
+result.success
+```
+
+Retry poderá ser utilizado para falhas temporárias, como:
+
+* HTTP 5xx;
+* Erros de conexão;
+* Timeout.
+
+Entretanto, retry não deverá provocar duplicidade de cadastro.
 
 ---
 
@@ -917,6 +1282,7 @@ Testar:
 * HTTP 4xx;
 * HTTP 5xx;
 * Timeout;
+* Falha de conexão;
 * JSON inválido.
 
 Utilizar HTTP fake/mock.
@@ -999,6 +1365,20 @@ unidade → unitMeasurement
 ordem → ordering
 ```
 
+Também testar conversões de tipos, especialmente preços.
+
+Exemplo:
+
+```text
+"109,90"
+```
+
+deverá resultar em:
+
+```text
+109.90
+```
+
 ---
 
 # 31. Testes de relacionamento
@@ -1018,9 +1398,13 @@ seja relacionado a:
 
 e que as variações de outros produtos não sejam associadas incorretamente.
 
-Testar produtos sem variações.
+Testar:
 
-Testar variações sem produto correspondente.
+* Produtos sem variações;
+* Variações sem produto correspondente;
+* SKU inválido;
+* SKU sem código de produto;
+* Variações duplicadas, caso existam.
 
 ---
 
@@ -1034,10 +1418,13 @@ Testar:
 * Relacionamento;
 * Uso correto do Mapper;
 * Criação de `ProductData`;
+* Uso do `VestiPayloadMapper`;
 * Envio para Vesti;
 * Tratamento de erros.
 
 Utilizar mocks das interfaces.
+
+Não realizar chamadas reais para ERP ou Vesti nos testes unitários.
 
 ---
 
@@ -1047,17 +1434,34 @@ Utilizar HTTP fake/mock.
 
 Testar:
 
-* Método POST;
+* Método `POST`;
 * URL;
-* Headers;
-* Autenticação;
+* `company_id`;
+* Header `apikey`;
+* Header `Content-Type`;
 * Payload;
+* Envio de múltiplos produtos;
+* Resposta HTTP 200;
 * Resposta de sucesso;
+* Resposta indicando falha;
 * HTTP 4xx;
 * HTTP 5xx;
-* Timeout.
+* Timeout;
+* Falha de conexão.
 
 Nunca utilizar credenciais reais nos testes.
+
+Exemplo esperado da URL:
+
+```text
+/v1/products/company/{company_id}
+```
+
+Exemplo esperado do header:
+
+```text
+apikey: {VESTI_API_KEY}
+```
 
 ---
 
@@ -1078,6 +1482,14 @@ REFACTOR
 ```
 
 Os testes devem orientar a implementação.
+
+Priorizar TDD para:
+
+* Mappers;
+* Relacionamento entre produtos e variações;
+* Conversão de preços;
+* `VestiPayloadMapper`;
+* Regras de sincronização.
 
 ---
 
@@ -1142,17 +1554,12 @@ Iniciar a sincronização.
 
 ```text
 php artisan products:sync
-
             │
             ▼
-
    ProductSyncService
-
             │
             ▼
-
-       ErpClient
-
+        ErpClient
             │
             ├───────────────┐
             ▼               ▼
@@ -1166,16 +1573,19 @@ php artisan products:sync
                   Mapper
                     │
                     ▼
-               ProductData
+              ProductData
                     │
                     ▼
-           VestiPayloadMapper
+          VestiPayloadMapper
                     │
                     ▼
-               VestiClient
+             Vesti Payload
                     │
                     ▼
-             POST /products
+              VestiClient
+                    │
+                    ▼
+       POST /v1/products/company/{id}
                     │
                     ▼
                   Vesti
@@ -1243,7 +1653,9 @@ vesti-hub/
 └── composer.json
 ```
 
-A estrutura acima é uma sugestão. Alterações são permitidas quando houver justificativa arquitetural.
+A estrutura acima é uma sugestão.
+
+Alterações são permitidas quando houver justificativa arquitetural.
 
 ---
 
@@ -1264,9 +1676,11 @@ xpto
 xyz
 ```
 
-A resolução do cliente e Mapper deve ser feita através de Dependency Injection/Factory/Strategy, evitando condicionais espalhados pela aplicação.
+A resolução do cliente e Mapper deve ser feita através de Dependency Injection, Factory ou Strategy.
 
-Evitar código como:
+Evitar condicionais espalhados pela aplicação.
+
+Não utilizar:
 
 ```php
 if ($erp === 'xpto') {
@@ -1280,6 +1694,19 @@ espalhado pelo sistema.
 
 A escolha do ERP deve ficar centralizada.
 
+Exemplo conceitual:
+
+```text
+ERP_PROVIDER
+      │
+      ▼
+ERP Factory
+      │
+      ├── xpto → XptoErpClient + XptoProductMapper
+      │
+      └── xyz  → XyzErpClient + XyzProductMapper
+```
+
 ---
 
 # 40. Extensibilidade
@@ -1288,6 +1715,7 @@ Adicionar um novo ERP deve exigir principalmente:
 
 ```text
 NovoErpClient
+
 NovoErpMapper
 ```
 
@@ -1295,8 +1723,11 @@ sem modificar:
 
 ```text
 ProductSyncService
+
 ProductData
+
 VariationData
+
 VestiClient
 ```
 
@@ -1312,11 +1743,13 @@ ABC ────────┤
        ProductData
             │
             ▼
-    VestiPayloadMapper
+   VestiPayloadMapper
             │
             ▼
         VestiClient
 ```
+
+O núcleo da aplicação não deve conhecer os detalhes de cada ERP.
 
 ---
 
@@ -1324,11 +1757,21 @@ ABC ────────┤
 
 A aplicação deve considerar o comportamento de execuções repetidas.
 
-A estratégia definitiva deverá depender das capacidades da API Vesti.
+A API Vesti disponibiliza o campo:
+
+```text
+integration_id
+```
+
+Esse campo deverá ser utilizado como identificador de integração conforme o contrato da API e a estratégia definida para o ERP.
+
+A estratégia definitiva de idempotência deverá depender do comportamento efetivamente disponibilizado pela API Vesti.
 
 Não criar banco de dados apenas para implementar idempotência.
 
-Caso a API Vesti não disponibilize mecanismo suficiente para identificar produtos previamente cadastrados, documentar a limitação.
+Caso a API Vesti não disponibilize mecanismo suficiente para garantir idempotência ou identificar produtos previamente enviados, essa limitação deverá ser documentada no README.
+
+Retry não deverá ser implementado de forma que uma falha de comunicação possa gerar cadastros duplicados sem uma estratégia definida.
 
 ---
 
@@ -1367,7 +1810,21 @@ docker compose up -d --build
 
 ## Configuração
 
-Explicar `.env`.
+Explicar:
+
+```text
+ERP_PROVIDER
+
+ERP_XPTO_API_URL
+
+ERP_XYZ_API_URL
+
+VESTI_API_URL
+
+VESTI_API_KEY
+
+VESTI_COMPANY_ID
+```
 
 ## ERP Mock
 
@@ -1397,9 +1854,35 @@ docker compose exec app php artisan test
 
 Explicar como XPTO e XYZ são normalizados para o mesmo modelo interno.
 
+## Integração Vesti
+
+Explicar:
+
+```text
+POST /v1/products/company/{company_id}
+```
+
+e a utilização do header:
+
+```text
+apikey
+```
+
 ## Arquitetura
 
 Explicar as responsabilidades de cada componente.
+
+## Tratamento de erros
+
+Explicar como erros dos ERPs e da Vesti são tratados.
+
+## Escalabilidade
+
+Explicar a estratégia de indexação de variações e envio em lotes.
+
+## Idempotência
+
+Documentar a estratégia adotada e eventuais limitações da API.
 
 ## Uso de IA
 
@@ -1416,6 +1899,7 @@ Seu uso deve ser documentado no README.
 Exemplos:
 
 * Análise dos requisitos;
+* Análise da documentação da API Vesti;
 * Proposta de arquitetura;
 * Geração de código inicial;
 * Geração de testes;
@@ -1443,13 +1927,19 @@ O projeto deverá:
 9. Normalizar ambos para o mesmo modelo interno;
 10. Relacionar corretamente produtos e variações;
 11. Gerar o payload esperado pela Vesti;
-12. Enviar produtos através da API Vesti;
-13. Tratar erros de integração;
-14. Possuir testes automatizados;
-15. Possuir documentação;
-16. Possuir instruções de execução;
-17. Demonstrar uso de IA;
-18. Permitir inclusão de novos ERPs com baixo impacto no núcleo da aplicação.
+12. Utilizar `POST /v1/products/company/{company_id}`;
+13. Utilizar autenticação através do header `apikey`;
+14. Enviar produtos através da API Vesti;
+15. Tratar erros de integração;
+16. Possuir testes automatizados;
+17. Possuir documentação;
+18. Possuir instruções de execução;
+19. Demonstrar uso de IA;
+20. Permitir inclusão de novos ERPs com baixo impacto no núcleo da aplicação;
+21. Evitar buscas O(n²) no relacionamento de produtos e variações;
+22. Permitir envio de múltiplos produtos em uma requisição;
+23. Não armazenar credenciais no código;
+24. Não depender de banco de dados, Redis ou filas na primeira versão.
 
 ---
 
@@ -1478,6 +1968,10 @@ DOMAIN MODEL
 
   ↓
 
+VESTI PAYLOAD MAPPER
+
+  ↓
+
 VESTI ADAPTER
 
   ↓
@@ -1502,10 +1996,20 @@ ERP N ─────────┘
           ProductData
                │
                ▼
-        VestiPayload
+      VestiPayloadMapper
+               │
+               ▼
+        Vesti Payload
+               │
+               ▼
+          VestiClient
                │
                ▼
            Vesti API
 ```
 
 A arquitetura deve favorecer extensibilidade sem introduzir complexidade desnecessária.
+
+O modelo interno deve permanecer independente tanto dos ERPs quanto do formato específico da API Vesti.
+
+A responsabilidade de adaptar o domínio para a Vesti deve permanecer isolada no `VestiPayloadMapper`, enquanto a comunicação HTTP deve permanecer isolada no `VestiClient`.
