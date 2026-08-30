@@ -1,324 +1,316 @@
-# Vesti Integration Hub — Specification
+# Vesti Hub — Specification
 
 ## 1. Objetivo
 
-Desenvolver um Hub de Integração em PHP/Laravel capaz de receber dados de produtos provenientes de diferentes sistemas ERP, normalizar essas informações e cadastrá-las na plataforma de vendas Vesti através da API disponibilizada.
+Construir um Hub de Integração em Laravel capaz de:
 
-O sistema deverá ser projetado para suportar múltiplos ERPs com estruturas de dados diferentes, mantendo uma saída padronizada para a integração com a Vesti.
+1. Consumir APIs de diferentes sistemas ERP;
+2. Obter produtos e suas variações;
+3. Normalizar estruturas diferentes de ERP para um modelo interno comum;
+4. Enviar os produtos normalizados para a API da Vesti.
 
-O projeto deve priorizar:
+O sistema deve permitir adicionar novos ERPs sem modificar a lógica principal de sincronização.
 
-* Separação de responsabilidades;
-* Legibilidade;
-* Reutilização de código;
+O projeto será desenvolvido como um desafio técnico, priorizando:
+
+* Responsabilidade única;
 * Baixo acoplamento;
+* Legibilidade;
+* Reutilização;
 * Testabilidade;
 * Performance;
 * Escalabilidade;
-* Facilidade de manutenção;
-* Facilidade para adicionar novos ERPs.
+* Extensibilidade.
 
 ---
 
 # 2. Stack
 
-Utilizar:
+* PHP 8.4+
+* Laravel 12
+* Docker
+* Docker Compose
+* PHPUnit/Pest
+* Git
+* GitHub
 
-* PHP 8.4+;
-* Laravel 8+;
-* Docker;
-* Docker Compose;
-* PHPUnit ou Pest;
-* Git;
-* GitHub.
+Não utilizar banco de dados para o fluxo principal da aplicação.
 
-Não utilizar banco de dados nesta primeira versão.
+Não utilizar Redis.
 
-O fluxo principal da aplicação é uma integração entre fontes externas e a API da Vesti e não exige persistência local.
+Não utilizar Jobs/Queues na implementação inicial.
+
+A aplicação deverá funcionar sem depender de um serviço externo de banco de dados.
 
 ---
 
-# 3. Estrutura das fontes ERP
+# 3. Arquitetura
 
-O desafio fornece dois ERPs:
+O projeto será composto por dois componentes:
 
 ```text
-erpxpto/
-├── produtos-erp.json
-└── variacoes-erp.json
-
-erpxyz/
-├── produtos-erp.json
-└── variacoes-erp.json
+ERP Mock
+    ↓ HTTP
+Vesti Hub
+    ↓ HTTP
+Vesti API
 ```
 
-Os arquivos JSON devem ser considerados as fontes de dados disponibilizadas pelo desafio.
+Arquitetura:
 
-A aplicação deve ser estruturada de forma que a fonte dos dados possa posteriormente ser substituída por uma API HTTP sem necessidade de alterar a lógica de negócio.
+```text
+┌──────────────────────────────┐
+│          ERP MOCK            │
+│                              │
+│ GET /erp/produtos.json       │
+│ GET /erp/variacoes.json      │
+└──────────────┬───────────────┘
+               │
+               │ HTTP GET
+               ▼
+┌──────────────────────────────┐
+│          VESTI HUB           │
+│           Laravel            │
+│                              │
+│ ERP Client                   │
+│      ↓                       │
+│ ERP Mapper                   │
+│      ↓                       │
+│ ProductData                  │
+│      ↓                       │
+│ ProductSyncService           │
+│      ↓                       │
+│ VestiClient                  │
+└──────────────┬───────────────┘
+               │
+               │ HTTP POST
+               ▼
+┌──────────────────────────────┐
+│          VESTI API           │
+└──────────────────────────────┘
+```
 
 ---
 
-# 4. ERP XPTO
+# 4. ERP Mock
 
-## 4.1 Produtos
+O ERP Mock será utilizado exclusivamente para simular as APIs dos ERPs durante o desenvolvimento.
 
-O ERP XPTO fornece produtos com uma estrutura semelhante a:
+Ele deverá expor:
+
+```text
+GET /erp/produtos.json
+GET /erp/variacoes.json
+```
+
+O ERP Mock deverá retornar os dados fornecidos nos arquivos JSON do desafio.
+
+O Hub deverá consumir essas URLs através de HTTP.
+
+O Hub não deve acessar diretamente os arquivos JSON.
+
+---
+
+# 5. ERPs disponíveis
+
+Existem dois ERPs:
+
+```text
+ERP XPTO
+ERP XYZ
+```
+
+Ambos fornecem produtos e variações.
+
+Os dados possuem a mesma finalidade de negócio, mas estruturas diferentes.
+
+O objetivo da arquitetura é transformar ambas as estruturas em um modelo interno comum.
+
+---
+
+# 6. Estrutura dos dados do ERP XPTO
+
+## 6.1 Produtos XPTO
+
+Exemplo:
 
 ```json
 {
-    "code": 1759710,
-    "name": "CALÇA SKINNY",
+    "code": 1761095,
+    "name": "SHORT ANTI FIT",
     "description": null,
-    "price": "94,90",
-    "price_promotional": 0,
+    "price": "109,90",
+    "price_promotional": 66,
     "composition": "100% Algodão",
     "brand": "Joana Modas"
 }
 ```
 
-Os campos observados são:
+Campos:
 
-* `code`
-* `name`
-* `description`
-* `price`
-* `price_promotional`
-* `composition`
-* `brand`
-
-Os dados reais do arquivo fornecido pelo desafio devem ser considerados a fonte de verdade.
-
-Não assumir campos que não existam no arquivo.
+```text
+code
+name
+description
+price
+price_promotional
+composition
+brand
+```
 
 ---
 
-# 5. Variações do ERP XPTO
+## 6.2 Variações XPTO
 
-As variações possuem uma estrutura semelhante a:
+Exemplo:
 
 ```json
 {
-    "sku": "1759710_46_MEDIA",
-    "size": 46,
-    "color": "MEDIA",
-    "quantity": 1,
+    "sku": "8750014_G_PRETA",
+    "size": "G",
+    "color": "PRETA",
+    "quantity": 370,
     "unit_measurement": "UN",
-    "ordering": 0
+    "ordering": 3
 }
 ```
 
-Os campos observados são:
+Campos:
 
-* `sku`
-* `size`
-* `color`
-* `quantity`
-* `unit_measurement`
-* `ordering`
+```text
+sku
+size
+color
+quantity
+unit_measurement
+ordering
+```
 
 ---
 
-# 6. Relacionamento entre produto e variação
+# 7. Estrutura dos dados do ERP XYZ
 
-No ERP XPTO, o relacionamento entre uma variação e o produto pai está representado no SKU.
+## 7.1 Produtos XYZ
 
 Exemplo:
 
-```text
-Produto:
-code = 1759710
-
-Variação:
-sku = 1759710_46_MEDIA
-```
-
-O código do produto pai corresponde ao primeiro segmento do SKU:
-
-```text
-1759710_46_MEDIA
-│
-└── product code = 1759710
-```
-
-A estrutura deve ser interpretada de forma que:
-
-```text
-1759710_46_MEDIA
-
-1759710 → produto pai
-46      → tamanho
-MEDIA   → cor
-```
-
-O código utilizado para relacionar produto e variação não deve ser baseado no nome do produto.
-
-O campo `name` não é um identificador único.
-
-Por exemplo, existem diversos produtos chamados:
-
-```text
-CALÇA SKINNY
-BLUSA CROPPED
-BLUSA BABY LOOK
-CALÇA CIGARRETE
-```
-
-mas com códigos diferentes.
-
-Portanto, o relacionamento deve utilizar o identificador apropriado fornecido pelo ERP.
-
----
-
-# 7. Indexação das variações
-
-Para evitar processamento desnecessário, as variações devem ser indexadas por produto pai antes do processamento dos produtos.
-
-Evitar uma implementação equivalente a:
-
-```text
-para cada produto:
-    procurar todas as variações
-```
-
-Preferir:
-
-```text
-carregar todas as variações
-        ↓
-indexar por produto
-        ↓
-processar produtos
-```
-
-Exemplo conceitual:
-
-```text
-variationsByProduct
-
-1759710 → [
-    variation 1,
-    variation 2,
-    variation 3
-]
-
-1759841 → [
-    variation 4,
-    variation 5
-]
-```
-
-A implementação deve buscar eficiência para grandes volumes de dados.
-
----
-
-# 8. ERP XYZ
-
-O ERP XYZ também possui:
-
-```text
-erpxyz/produtos-erp.json
-erpxyz/variacoes-erp.json
-```
-
-A estrutura do ERP XYZ deverá ser analisada diretamente a partir dos arquivos fornecidos.
-
-Não assumir que os campos possuem os mesmos nomes utilizados pelo ERP XPTO.
-
-O ERP XYZ deve possuir sua própria camada de transformação caso sua estrutura seja diferente.
-
-Exemplo conceitual:
-
-```text
-ERP XPTO
-   ↓
-XptoProductMapper
-   ↓
-ProductData
-
-
-ERP XYZ
-   ↓
-XyzProductMapper
-   ↓
-ProductData
-```
-
-Ambos devem produzir o mesmo modelo interno.
-
----
-
-# 9. Abstração para múltiplos ERPs
-
-A arquitetura deve permitir a inclusão de novos ERPs sem alterar o núcleo da aplicação.
-
-Criar uma abstração equivalente a:
-
-```php
-interface ErpClientInterface
+```json
 {
-    public function getProducts(): array;
-
-    public function getVariations(): array;
+    "referencia": 1761095,
+    "nome": "SHORT ANTI FIT",
+    "descricao": null,
+    "preco": "109,90",
+    "promocao": 66,
+    "composicao": "100% Algodão",
+    "marca": "Joana Modas"
 }
 ```
 
-Cada ERP deverá possuir sua implementação específica quando necessário.
+Campos:
+
+```text
+referencia
+nome
+descricao
+preco
+promocao
+composicao
+marca
+```
+
+---
+
+## 7.2 Variações XYZ
 
 Exemplo:
 
-```text
-ErpClientInterface
-        │
-        ├── XptoErpClient
-        │
-        └── XyzErpClient
+```json
+{
+    "variacao": "8750014_G_PRETA",
+    "tamanho": "G",
+    "cor": "PRETA",
+    "quantidade": 370,
+    "unidade": "UN",
+    "ordem": 3
+}
 ```
 
-A implementação responsável por obter os dados não deve conter regras específicas da Vesti.
-
----
-
-# 10. Fonte de dados
-
-Inicialmente, os dados poderão ser obtidos dos arquivos JSON fornecidos pelo desafio.
-
-A arquitetura deve evitar acoplar o domínio diretamente ao sistema de arquivos.
-
-O objetivo é permitir posteriormente uma implementação HTTP:
+Campos:
 
 ```text
-JsonErpClient
-```
-
-ou:
-
-```text
-HttpErpClient
-```
-
-sem alterar o restante do fluxo.
-
-Conceitualmente:
-
-```text
-                 ErpClientInterface
-                        │
-              ┌─────────┴─────────┐
-              │                   │
-         JSON Source         HTTP Source
-              │                   │
-              └─────────┬─────────┘
-                        ▼
-                 Modelo da aplicação
+variacao
+tamanho
+cor
+quantidade
+unidade
+ordem
 ```
 
 ---
 
-# 11. Modelo interno
+# 8. Mapeamento entre ERPs
 
-Criar um modelo interno independente do ERP.
+Os dados dos dois ERPs deverão resultar no mesmo modelo interno.
 
-Esse modelo representa um produto normalizado que será utilizado pelo restante da aplicação.
+## Produto
+
+```text
+XPTO                         XYZ
+------------------------------------------------
+code              →         referencia
+name              →         nome
+description       →         descricao
+price             →         preco
+price_promotional →         promocao
+composition       →         composicao
+brand              →         marca
+```
+
+Modelo interno:
+
+```text
+code
+name
+description
+price
+promotionalPrice
+composition
+brand
+```
+
+---
+
+## Variação
+
+```text
+XPTO                         XYZ
+------------------------------------------------
+sku               →         variacao
+size              →         tamanho
+color             →         cor
+quantity          →         quantidade
+unit_measurement  →         unidade
+ordering          →         ordem
+```
+
+Modelo interno:
+
+```text
+sku
+size
+color
+quantity
+unitMeasurement
+ordering
+```
+
+---
+
+# 9. Modelo interno
+
+Criar DTOs independentes dos ERPs.
+
+## ProductData
 
 Exemplo conceitual:
 
@@ -326,6 +318,7 @@ Exemplo conceitual:
 final readonly class ProductData
 {
     public function __construct(
+        public int $code,
         public string $name,
         public ?string $description,
         public float $price,
@@ -337,225 +330,364 @@ final readonly class ProductData
 }
 ```
 
-Os campos definitivos devem ser definidos após analisar:
+## VariationData
 
-1. Todos os dados relevantes dos dois ERPs;
-2. A documentação da API da Vesti.
+Exemplo conceitual:
 
-Não criar campos sem necessidade.
+```php
+final readonly class VariationData
+{
+    public function __construct(
+        public string $sku,
+        public string|int $size,
+        public string $color,
+        public int $quantity,
+        public string $unitMeasurement,
+        public int $ordering,
+    ) {}
+}
+```
+
+Os tipos definitivos devem ser ajustados conforme os dados reais e o contrato da API Vesti.
+
+O domínio não deve conhecer `code`, `referencia`, `name`, `nome`, etc. como conceitos diferentes.
+
+Após a normalização, deve existir somente o modelo interno.
 
 ---
 
-# 12. Mapper
+# 10. Relacionamento entre produto e variação
 
-Criar uma abstração para converter os dados de cada ERP para o modelo interno.
+O relacionamento deve utilizar o identificador contido no SKU/variação.
 
 Exemplo:
+
+```text
+Produto:
+
+code = 8750014
+```
+
+Variação:
+
+```text
+sku = 8750014_G_PRETA
+```
+
+O código do produto corresponde ao primeiro segmento do SKU.
+
+No XYZ:
+
+```text
+referencia = 8750014
+
+variacao = 8750014_G_PRETA
+```
+
+O Mapper deve normalizar ambos para:
+
+```text
+ProductData
+    code = 8750014
+    variations = [
+        VariationData(
+            sku = "8750014_G_PRETA",
+            size = "G",
+            color = "PRETA",
+            quantity = 370,
+            unitMeasurement = "UN",
+            ordering = 3
+        )
+    ]
+```
+
+O relacionamento não deve depender do nome do produto.
+
+---
+
+# 11. Performance no relacionamento
+
+Não procurar as variações percorrendo toda a lista para cada produto.
+
+Evitar:
+
+```text
+para cada produto:
+    percorrer todas as variações
+```
+
+Preferir indexação:
+
+```text
+variationsByProductCode
+
+8750014 => [
+    variation,
+    variation
+]
+
+1761349 => [
+    variation,
+    variation
+]
+```
+
+O fluxo deverá ser:
+
+```text
+1. Obter variações;
+2. Extrair o código do produto através do SKU;
+3. Indexar as variações;
+4. Obter produtos;
+5. Associar as variações utilizando o índice.
+```
+
+Isso evita buscas repetitivas e melhora o desempenho para grandes volumes.
+
+---
+
+# 12. Abstração para múltiplos ERPs
+
+A aplicação deverá utilizar abstrações para permitir N ERPs.
+
+Criar contratos semelhantes a:
+
+```php
+interface ErpClientInterface
+{
+    public function getProducts(): array;
+
+    public function getVariations(): array;
+}
+```
+
+E:
 
 ```php
 interface ProductMapperInterface
 {
-    public function map(
-        array $product,
-        array $variations
-    ): ProductData;
+    public function mapProduct(array $product): ProductData;
+
+    public function mapVariation(array $variation): VariationData;
+
+    public function getProductCodeFromVariation(array $variation): int;
 }
 ```
 
-Implementações esperadas:
+As interfaces são conceituais e podem ser ajustadas caso outra abstração produza melhor separação de responsabilidades.
+
+---
+
+# 13. Implementações dos ERPs
+
+Criar implementações específicas:
+
+```text
+ErpClientInterface
+│
+├── XptoErpClient
+└── XyzErpClient
+```
+
+E:
 
 ```text
 ProductMapperInterface
-        │
-        ├── XptoProductMapper
-        │
-        └── XyzProductMapper
+│
+├── XptoProductMapper
+└── XyzProductMapper
 ```
 
-O Mapper deve ser responsável exclusivamente pela transformação dos dados.
+Cada implementação deve conhecer somente a estrutura do seu ERP.
+
+Exemplo:
+
+```text
+XPTO
+code
+name
+price
+price_promotional
+       ↓
+XptoProductMapper
+       ↓
+ProductData
+```
+
+```text
+XYZ
+referencia
+nome
+preco
+promocao
+       ↓
+XyzProductMapper
+       ↓
+ProductData
+```
+
+---
+
+# 14. Cliente ERP
+
+O cliente ERP deve ser responsável exclusivamente pela comunicação HTTP.
+
+Responsabilidades:
+
+* Fazer GET dos produtos;
+* Fazer GET das variações;
+* Configurar timeout;
+* Tratar erros HTTP;
+* Retornar os dados recebidos.
+
+Não deve:
+
+* Normalizar dados;
+* Conhecer a Vesti;
+* Criar produtos;
+* Implementar regras de negócio.
+
+---
+
+# 15. Mapper
+
+O Mapper deve ser responsável exclusivamente pela transformação da estrutura do ERP para o modelo interno.
+
+Responsabilidades:
+
+* Mapear produto;
+* Mapear variação;
+* Extrair o código do produto;
+* Converter tipos necessários;
+* Validar estrutura mínima necessária.
 
 Não deve:
 
 * Fazer requisições HTTP;
-* Cadastrar produtos na Vesti;
-* Controlar o processo de sincronização;
-* Acessar banco de dados;
-* Conter lógica específica de infraestrutura.
+* Enviar produtos para Vesti;
+* Controlar o processo de sincronização.
 
 ---
 
-# 13. Normalização
-
-Os dados provenientes dos diferentes ERPs devem ser convertidos para uma estrutura interna única.
-
-Fluxo:
-
-```text
-ERP XPTO
-   │
-   ▼
-Dados XPTO
-   │
-   ▼
-XptoProductMapper
-   │
-   ▼
-ProductData
-```
-
-ou:
-
-```text
-ERP XYZ
-   │
-   ▼
-Dados XYZ
-   │
-   ▼
-XyzProductMapper
-   │
-   ▼
-ProductData
-```
-
-A partir desse ponto, o restante da aplicação deve trabalhar exclusivamente com o modelo interno.
-
----
-
-# 14. Integração com a Vesti
-
-Criar uma abstração para a plataforma de destino.
-
-Exemplo:
-
-```php
-interface SalesPlatformInterface
-{
-    public function createProduct(
-        ProductData $product
-    ): array;
-}
-```
-
-Criar uma implementação:
-
-```text
-VestiClient
-```
-
-A implementação deve utilizar o HTTP Client do Laravel.
-
-O endpoint indicado pelo desafio é:
-
-```text
-POST /products
-```
-
-A URL base e demais informações de autenticação devem ser configuradas através de variáveis de ambiente.
-
----
-
-# 15. Documentação da API Vesti
-
-Antes de implementar o `VestiClient`, analisar a documentação oficial fornecida no desafio:
-
-```text
-https://integracao.meuvesti.com/doc/api/index.html#api-Produtos-post_products
-```
-
-Determinar exatamente:
-
-* URL;
-* Método HTTP;
-* Autenticação;
-* Headers;
-* Campos obrigatórios;
-* Campos opcionais;
-* Estrutura do produto;
-* Estrutura das variações;
-* Formatos dos valores;
-* Respostas de sucesso;
-* Respostas de erro.
-
-Não inventar o payload da Vesti.
-
-O modelo interno deverá ser adaptado ao contrato real da API.
-
----
-
-# 16. Configuração
-
-Credenciais e configurações externas devem utilizar variáveis de ambiente.
-
-Exemplo:
-
-```env
-VESTI_API_URL=
-VESTI_API_KEY=
-ERP_API_URL=
-```
-
-Não armazenar credenciais no código-fonte.
+# 16. Serviço de sincronização
 
 Criar:
 
 ```text
-.env.example
+ProductSyncService
 ```
 
-O `.env` real não deve ser versionado.
-
----
-
-# 17. Serviço de sincronização
-
-Criar um serviço responsável por orquestrar a sincronização.
-
-Exemplo:
-
-```php
-final class ProductSyncService
-{
-    public function sync(): void
-    {
-        // obter produtos
-        // obter variações
-        // relacionar variações aos produtos
-        // normalizar os dados
-        // enviar produtos para a Vesti
-    }
-}
-```
-
-O serviço deve coordenar os componentes.
-
-Ele não deve implementar diretamente:
-
-* chamadas HTTP do ERP;
-* regras específicas de um ERP;
-* regras específicas da API Vesti;
-* leitura direta de arquivos;
-* detalhes de autenticação.
+Esse serviço será responsável por orquestrar a sincronização.
 
 Fluxo:
 
 ```text
 ProductSyncService
         │
-        ├── ErpClientInterface
+        ▼
+ErpClient
         │
-        ├── ProductMapperInterface
+        ├── produtos
         │
-        └── SalesPlatformInterface
+        └── variações
+        │
+        ▼
+Indexação das variações
+        │
+        ▼
+Mapper
+        │
+        ▼
+ProductData
+        │
+        ▼
+VestiClient
+        │
+        ▼
+Vesti API
 ```
+
+O serviço não deve implementar diretamente detalhes de HTTP.
 
 ---
 
-# 18. Command
+# 17. Cliente Vesti
 
-Criar um Artisan Command para executar a sincronização.
+Criar:
 
-Exemplo:
+```text
+VestiClient
+```
+
+Implementando:
+
+```php
+interface SalesPlatformInterface
+{
+    public function createProduct(ProductData $product): array;
+}
+```
+
+O cliente deverá utilizar o HTTP Client do Laravel.
+
+---
+
+# 18. API Vesti
+
+Utilizar a documentação oficial fornecida no desafio:
+
+```text
+POST /products
+```
+
+Documentação:
+
+https://integracao.meuvesti.com/doc/api/index.html#api-Produtos-post_products
+
+Antes da implementação do cliente, analisar a documentação para determinar:
+
+* URL;
+* Método;
+* Autenticação;
+* Headers;
+* Payload;
+* Campos obrigatórios;
+* Campos opcionais;
+* Estrutura das variações;
+* Respostas de sucesso;
+* Respostas de erro.
+
+Não inventar campos que não estejam presentes no contrato da API.
+
+---
+
+# 19. Separação do payload da Vesti
+
+O modelo interno não deve necessariamente ser igual ao payload da Vesti.
+
+A aplicação deverá separar:
+
+```text
+ERP
+ ↓
+ERP Mapper
+ ↓
+ProductData
+ ↓
+Vesti Payload Mapper
+ ↓
+Vesti API
+```
+
+Caso o contrato da Vesti exija uma estrutura diferente, criar um componente específico para transformar `ProductData` no payload da Vesti.
+
+Isso evita acoplar o domínio ao formato externo da API.
+
+---
+
+# 20. Command
+
+Criar um Artisan Command:
 
 ```bash
 php artisan products:sync
@@ -563,280 +695,454 @@ php artisan products:sync
 
 O Command deve apenas iniciar o processo de sincronização.
 
-A lógica de negócio deve permanecer no `ProductSyncService`.
-
-Fluxo:
-
-```text
-Artisan Command
-      ↓
-ProductSyncService
-      ↓
-ERP
-      ↓
-Mapper
-      ↓
-ProductData
-      ↓
-VestiClient
-      ↓
-Vesti
-```
+Não colocar regras de negócio no Command.
 
 ---
 
-# 19. Jobs e escalabilidade
+# 21. Configuração
 
-A implementação inicial deve funcionar de maneira síncrona.
-
-Entretanto, a arquitetura deve permitir a utilização de Jobs do Laravel posteriormente.
-
-Para grandes volumes:
-
-```text
-ProductSyncService
-        ↓
-Dispatch Jobs
-        ↓
-┌───────────────┐
-│ SyncProductJob│
-├───────────────┤
-│ Product 1     │
-│ Product 2     │
-│ Product 3     │
-│ ...           │
-└───────────────┘
-        ↓
-      Vesti
-```
-
-Não adicionar complexidade desnecessária se o volume fornecido pelo desafio não justificar.
-
----
-
-# 20. Tratamento de erros
-
-Implementar tratamento adequado para erros de integração.
-
-Considerar:
-
-* Falha de conexão;
-* Timeout;
-* Erro HTTP;
-* Erro de autenticação;
-* Dados inválidos;
-* Produto inválido;
-* Falha de transformação;
-* Resposta inesperada da API.
-
-Utilizar timeout nas requisições HTTP.
-
-Utilizar retry somente para erros potencialmente temporários.
-
-Erros não recuperáveis não devem ser repetidos desnecessariamente.
-
----
-
-# 21. Validação
-
-Os dados recebidos dos ERPs devem ser validados antes da transformação ou envio quando necessário.
-
-Campos obrigatórios devem ser tratados explicitamente.
-
-Dados inválidos não devem gerar payloads incorretos para a Vesti.
-
-Erros de validação devem ser identificáveis e não devem interromper desnecessariamente o processamento de produtos válidos.
-
----
-
-# 22. Preços
-
-O ERP XPTO fornece valores como:
-
-```json
-{
-    "price": "94,90",
-    "price_promotional": 0
-}
-```
-
-A aplicação deverá tratar corretamente a diferença entre:
-
-```text
-"94,90"
-```
-
-e um valor numérico.
-
-Não realizar conversões de preço de forma que cause perda de precisão.
-
-A regra definitiva para:
-
-```text
-price
-price_promotional
-```
-
-deve ser definida de acordo com o contrato da Vesti.
-
-Não assumir que `price_promotional = 0` possui significado específico sem verificar a regra do sistema.
-
----
-
-# 23. Identificação de produtos
-
-O nome do produto não deve ser utilizado como identificador único.
+As URLs e credenciais devem ser configuráveis através do `.env`.
 
 Exemplo:
 
-```text
-CALÇA SKINNY
-CALÇA SKINNY
-CALÇA SKINNY
+```env
+ERP_API_URL=http://erp-mock
+VESTI_API_URL=
+VESTI_API_KEY=
 ```
 
-podem representar produtos diferentes.
+Não armazenar credenciais no código.
 
-O identificador do produto deverá ser baseado no campo apropriado fornecido pelo ERP.
+Não versionar o `.env`.
 
-No ERP XPTO, o campo observado para identificação do produto pai é:
+Criar `.env.example`.
+
+---
+
+# 22. Docker
+
+Utilizar Docker Compose.
+
+Serviços iniciais:
+
+```yaml
+services:
+
+  app:
+    # Laravel / PHP
+
+  erp-mock:
+    # API Mock dos ERPs
+```
+
+Não criar:
 
 ```text
-code
+mysql
+postgres
+redis
+```
+
+Não utilizar banco para armazenar produtos ou variações.
+
+---
+
+# 23. ERP Mock e Docker
+
+O Hub deve consumir o ERP Mock através da rede interna do Docker.
+
+Exemplo:
+
+```env
+ERP_API_URL=http://erp-mock
+```
+
+Não utilizar:
+
+```env
+ERP_API_URL=http://localhost
+```
+
+para comunicação entre containers.
+
+O ERP Mock deverá disponibilizar:
+
+```text
+GET /erp/produtos.json
+GET /erp/variacoes.json
 ```
 
 ---
 
-# 24. Idempotência
+# 24. Dados do ERP Mock
 
-A sincronização deve considerar a possibilidade de execução repetida.
+Os arquivos fornecidos deverão ser organizados de forma semelhante a:
 
-A solução deverá analisar o comportamento da API da Vesti para determinar como produtos existentes podem ser identificados.
+```text
+erp-mock/
+└── data/
+    ├── erpxpto/
+    │   ├── produtos-erp.json
+    │   └── variacoes-erp.json
+    │
+    └── erpxyz/
+        ├── produtos-erp.json
+        └── variacoes-erp.json
+```
 
-Não criar persistência local apenas para implementar idempotência se isso não for necessário para o escopo do desafio.
+O ERP Mock poderá selecionar qual ERP está sendo simulado através de configuração, rota ou outra abordagem simples.
 
-Caso a API não permita determinar adequadamente se um produto já foi cadastrado, documentar essa limitação no README.
+A implementação deve deixar clara a separação entre XPTO e XYZ.
 
 ---
 
-# 25. Testes
+# 25. Banco de dados
 
-O projeto deve possuir testes automatizados.
+Não utilizar banco de dados.
 
-Priorizar testes unitários.
+O projeto não deverá criar persistência para:
 
-## 25.1 XptoProductMapper
+* Produtos;
+* Variações;
+* Sincronizações;
+* Jobs;
+* Histórico.
 
-Testar:
+Os dados serão obtidos das APIs do ERP e enviados à Vesti.
+
+Logs deverão utilizar o mecanismo de logs do Laravel.
+
+---
+
+# 26. Jobs e filas
+
+Não implementar Jobs/Queues na primeira versão.
+
+A sincronização será síncrona:
 
 ```text
-- transformação correta do produto;
-- transformação das variações;
-- relacionamento correto entre produto e variações;
-- conversão dos preços;
-- tratamento de descrição nula;
-- tratamento de dados inválidos.
+Command
+ ↓
+Sync
+ ↓
+ERP
+ ↓
+Mapper
+ ↓
+Vesti
 ```
 
-## 25.2 XyzProductMapper
+A arquitetura deverá permitir uma futura evolução para processamento assíncrono caso o volume ou os requisitos reais exijam.
 
-Testar a transformação da estrutura específica do ERP XYZ.
+Não adicionar Redis ou banco apenas para demonstrar escalabilidade.
 
-O resultado deve ser compatível com o mesmo modelo interno utilizado pelo XPTO.
+---
 
-## 25.3 ProductSyncService
+# 27. Escalabilidade
+
+A solução deverá ser capaz de lidar com aproximadamente 50.000 produtos.
+
+A implementação deve:
+
+* Evitar buscas O(n²) desnecessárias;
+* Indexar variações;
+* Evitar chamadas HTTP redundantes;
+* Evitar transformações repetidas;
+* Reutilizar clientes HTTP;
+* Manter responsabilidades separadas.
+
+O sistema deve ser projetado para possibilitar evolução futura para:
+
+* Processamento em lotes;
+* Streaming;
+* Jobs;
+* Workers;
+* Filas;
+* Retry distribuído.
+
+Essas funcionalidades não fazem parte da primeira versão.
+
+---
+
+# 28. Tratamento de erros
+
+Tratar:
+
+* Timeout do ERP;
+* Falha de conexão;
+* HTTP 4xx;
+* HTTP 5xx;
+* JSON inválido;
+* Campos obrigatórios ausentes;
+* Produto inválido;
+* Variação inválida;
+* Falha de transformação;
+* Timeout da Vesti;
+* Erros HTTP da Vesti.
+
+Configurar timeout para chamadas HTTP.
+
+Retry poderá ser utilizado para falhas temporárias, como HTTP 5xx ou erros de conexão, desde que não gere duplicidade de cadastro.
+
+---
+
+# 29. Testes
+
+O projeto deverá possuir testes automatizados.
+
+## ERP Client
+
+Testar:
+
+* Endpoint correto;
+* Método HTTP;
+* Resposta válida;
+* HTTP 4xx;
+* HTTP 5xx;
+* Timeout;
+* JSON inválido.
+
+Utilizar HTTP fake/mock.
+
+Não realizar chamadas reais durante os testes.
+
+---
+
+# 30. Testes dos Mappers
+
+## XPTO
 
 Testar:
 
 ```text
-- obtenção dos produtos;
-- obtenção das variações;
-- indexação das variações;
-- relacionamento entre produtos e variações;
-- utilização do mapper;
-- envio para a plataforma;
-- tratamento de falhas.
+code → code
+name → name
+description → description
+price → price
+price_promotional → promotionalPrice
+composition → composition
+brand → brand
 ```
 
-## 25.4 VestiClient
+E:
 
-Utilizar fake/mock HTTP.
+```text
+sku → sku
+size → size
+color → color
+quantity → quantity
+unit_measurement → unitMeasurement
+ordering → ordering
+```
 
-Não realizar chamadas reais para a API da Vesti durante os testes.
+## XYZ
 
 Testar:
 
 ```text
-- método HTTP;
-- URL;
-- headers;
-- autenticação;
-- payload;
-- resposta de sucesso;
-- erro HTTP;
-- timeout;
+referencia → code
+nome → name
+descricao → description
+preco → price
+promocao → promotionalPrice
+composicao → composition
+marca → brand
+```
+
+E:
+
+```text
+variacao → sku
+tamanho → size
+cor → color
+quantidade → quantity
+unidade → unitMeasurement
+ordem → ordering
 ```
 
 ---
 
-# 26. TDD
+# 31. Testes de relacionamento
 
-Sempre que possível, desenvolver novas regras utilizando o ciclo:
+Testar que:
+
+```text
+8750014
+```
+
+seja relacionado a:
+
+```text
+8750014_G_PRETA
+8750014_GG_PRETA
+```
+
+e que as variações de outros produtos não sejam associadas incorretamente.
+
+Testar produtos sem variações.
+
+Testar variações sem produto correspondente.
+
+---
+
+# 32. Testes do ProductSyncService
+
+Testar:
+
+* Busca de produtos;
+* Busca de variações;
+* Indexação;
+* Relacionamento;
+* Uso correto do Mapper;
+* Criação de `ProductData`;
+* Envio para Vesti;
+* Tratamento de erros.
+
+Utilizar mocks das interfaces.
+
+---
+
+# 33. Testes do VestiClient
+
+Utilizar HTTP fake/mock.
+
+Testar:
+
+* Método POST;
+* URL;
+* Headers;
+* Autenticação;
+* Payload;
+* Resposta de sucesso;
+* HTTP 4xx;
+* HTTP 5xx;
+* Timeout.
+
+Nunca utilizar credenciais reais nos testes.
+
+---
+
+# 34. TDD
+
+Para as principais regras de negócio, utilizar:
 
 ```text
 RED
  ↓
-Escrever teste que falha
+Criar teste que falha
  ↓
 GREEN
  ↓
-Implementar o mínimo necessário
+Implementar solução mínima
  ↓
 REFACTOR
- ↓
-Melhorar a implementação
 ```
 
-O objetivo não é criar testes apenas após toda a implementação.
-
-Os testes devem orientar a construção das principais regras de negócio.
+Os testes devem orientar a implementação.
 
 ---
 
-# 27. Docker
+# 35. Legibilidade
 
-O projeto deve ser executado utilizando Docker.
+O código deve:
 
-A configuração deve permitir iniciar a aplicação com:
+* Utilizar nomes descritivos;
+* Manter métodos pequenos;
+* Evitar métodos com múltiplas responsabilidades;
+* Evitar duplicação;
+* Evitar condicionais complexos;
+* Utilizar tipagem adequada;
+* Utilizar Dependency Injection;
+* Utilizar interfaces quando houver necessidade de substituição ou extensão.
 
-```bash
-docker compose up -d --build
-```
+Não criar abstrações sem justificativa.
 
-A aplicação deverá disponibilizar o Laravel através do ambiente Docker.
+---
 
-Não é necessário criar container de banco de dados nesta versão.
+# 36. Responsabilidades
 
-Estrutura conceitual:
+## ERP Mock
+
+Simular APIs do ERP.
+
+## ErpClient
+
+Comunicar-se com o ERP.
+
+## Mapper
+
+Normalizar dados do ERP.
+
+## ProductData
+
+Representar o produto normalizado.
+
+## VariationData
+
+Representar a variação normalizada.
+
+## VestiPayloadMapper
+
+Converter o domínio para o formato da Vesti.
+
+## VestiClient
+
+Comunicar-se com a API Vesti.
+
+## ProductSyncService
+
+Orquestrar a sincronização.
+
+## Command
+
+Iniciar a sincronização.
+
+---
+
+# 37. Fluxo completo
 
 ```text
-Docker Compose
-      │
-      └── app
-          ├── PHP
-          ├── Apache
-          ├── Composer
-          └── Laravel
+php artisan products:sync
+            │
+            ▼
+   ProductSyncService
+            │
+            ▼
+       ErpClient
+            │
+            ├───────────────┐
+            ▼               ▼
+       produtos         variações
+            │               │
+            └───────┬───────┘
+                    ▼
+              Indexação
+                    │
+                    ▼
+                 Mapper
+                    │
+                    ▼
+              ProductData
+                    │
+                    ▼
+          VestiPayloadMapper
+                    │
+                    ▼
+              VestiClient
+                    │
+                    ▼
+             POST /products
+                    │
+                    ▼
+                  Vesti
 ```
 
 ---
 
-# 28. Estrutura de diretórios sugerida
-
-A estrutura pode seguir:
+# 38. Estrutura sugerida
 
 ```text
-vesti-integration-hub/
+vesti-hub/
 │
 ├── app/
 │   ├── Contracts/
@@ -845,7 +1151,13 @@ vesti-integration-hub/
 │   │   └── SalesPlatformInterface.php
 │   │
 │   ├── DTOs/
-│   │   └── ProductData.php
+│   │   ├── ProductData.php
+│   │   └── VariationData.php
+│   │
+│   ├── Mappers/
+│   │   ├── XptoProductMapper.php
+│   │   ├── XyzProductMapper.php
+│   │   └── VestiPayloadMapper.php
 │   │
 │   ├── Services/
 │   │   ├── Erp/
@@ -857,28 +1169,24 @@ vesti-integration-hub/
 │   │   │
 │   │   └── ProductSyncService.php
 │   │
-│   ├── Mappers/
-│   │   ├── XptoProductMapper.php
-│   │   └── XyzProductMapper.php
-│   │
 │   └── Console/
 │       └── Commands/
 │           └── SyncProductsCommand.php
 │
-├── data/
-│   ├── erpxpto/
-│   │   ├── produtos-erp.json
-│   │   └── variacoes-erp.json
+├── erp-mock/
+│   ├── data/
+│   │   ├── erpxpto/
+│   │   │   ├── produtos-erp.json
+│   │   │   └── variacoes-erp.json
+│   │   │
+│   │   └── erpxyz/
+│   │       ├── produtos-erp.json
+│   │       └── variacoes-erp.json
 │   │
-│   └── erpxyz/
-│       ├── produtos-erp.json
-│       └── variacoes-erp.json
+│   └── ...
 │
 ├── tests/
 │   ├── Unit/
-│   │   ├── Mappers/
-│   │   └── Services/
-│   │
 │   └── Feature/
 │
 ├── Dockerfile
@@ -886,16 +1194,102 @@ vesti-integration-hub/
 ├── .env.example
 ├── .gitignore
 ├── README.md
-└── SPEC.md
+├── SPEC.md
+└── composer.json
 ```
 
-A estrutura acima é uma sugestão. O desenvolvedor pode ajustá-la se houver uma justificativa arquitetural clara.
+A estrutura acima é uma sugestão. Alterações são permitidas quando houver justificativa arquitetural.
 
 ---
 
-# 29. README
+# 39. Configuração do ERP
 
-O README deve conter:
+A arquitetura deve permitir selecionar qual ERP será utilizado.
+
+Exemplo conceitual:
+
+```env
+ERP_PROVIDER=xpto
+```
+
+Valores esperados inicialmente:
+
+```text
+xpto
+xyz
+```
+
+A resolução do cliente e Mapper deve ser feita através de Dependency Injection/Factory/Strategy, evitando condicionais espalhados pela aplicação.
+
+Evitar código como:
+
+```php
+if ($erp === 'xpto') {
+    ...
+} elseif ($erp === 'xyz') {
+    ...
+}
+```
+
+espalhado pelo sistema.
+
+A escolha do ERP deve ficar centralizada.
+
+---
+
+# 40. Extensibilidade
+
+Adicionar um novo ERP deve exigir principalmente:
+
+```text
+NovoErpClient
+NovoErpMapper
+```
+
+sem modificar:
+
+```text
+ProductSyncService
+ProductData
+VariationData
+VestiClient
+```
+
+Exemplo:
+
+```text
+XPTO ───────┐
+            │
+XYZ ────────┤
+            │
+ABC ────────┤
+            ▼
+       ProductData
+            │
+            ▼
+     VestiPayloadMapper
+            │
+            ▼
+        VestiClient
+```
+
+---
+
+# 41. Idempotência
+
+A aplicação deve considerar o comportamento de execuções repetidas.
+
+A estratégia definitiva deverá depender das capacidades da API Vesti.
+
+Não criar banco de dados apenas para implementar idempotência.
+
+Caso a API Vesti não disponibilize mecanismo suficiente para identificar produtos previamente cadastrados, documentar a limitação.
+
+---
+
+# 42. README
+
+O README deverá conter:
 
 ## Objetivo
 
@@ -909,39 +1303,35 @@ Explicar:
 ERP → Hub → Vesti
 ```
 
-e a abstração para múltiplos ERPs.
-
 ## Requisitos
 
-Listar:
-
 * Docker;
-* Docker Compose;
-* Git.
+* Docker Compose.
 
 ## Instalação
 
-Explicar passo a passo:
+Exemplo:
 
 ```bash
-git clone ...
-cd ...
+git clone <repository>
+cd vesti-hub
 docker compose up -d --build
 ```
 
 ## Configuração
 
-Explicar o `.env`.
+Explicar `.env`.
 
-## Execução
+## ERP Mock
 
-Explicar como executar:
+Explicar os endpoints:
 
-```bash
-php artisan products:sync
+```text
+GET /erp/produtos.json
+GET /erp/variacoes.json
 ```
 
-ou através do container:
+## Execução
 
 ```bash
 docker compose exec app php artisan products:sync
@@ -949,174 +1339,111 @@ docker compose exec app php artisan products:sync
 
 ## Testes
 
-Explicar:
-
 ```bash
 docker compose exec app php artisan test
 ```
 
-## Adição de novos ERPs
+## Múltiplos ERPs
 
-Explicar como criar um novo Adapter/Mapper sem modificar o núcleo da aplicação.
+Explicar como XPTO e XYZ são normalizados para o mesmo modelo interno.
 
-## Utilização de IA
+## Arquitetura
 
-Documentar de maneira transparente como ferramentas de IA foram utilizadas durante o desenvolvimento.
+Explicar as responsabilidades de cada componente.
+
+## Uso de IA
+
+Descrever como ferramentas de IA foram utilizadas durante o desenvolvimento.
 
 ---
 
-# 30. Utilização de IA
+# 43. Uso de IA
 
-A IA pode ser utilizada durante o desenvolvimento.
+A IA poderá ser utilizada como ferramenta de apoio.
 
-O uso deve ser documentado no README.
+Seu uso deve ser documentado no README.
 
-Exemplos de utilização:
+Exemplos:
 
-* Análise inicial do problema;
-* Sugestões de arquitetura;
+* Análise dos requisitos;
+* Proposta de arquitetura;
+* Geração de código inicial;
 * Geração de testes;
 * Revisão de código;
-* Identificação de possíveis problemas;
-* Sugestões de refatoração;
-* Auxílio na documentação;
-* Geração de código boilerplate.
+* Identificação de problemas;
+* Refatoração;
+* Documentação.
 
-A implementação final deve ser revisada e compreendida pelo desenvolvedor.
-
-A IA não deve ser utilizada como substituição da análise técnica.
+O código gerado por IA deverá ser revisado, testado e compreendido pelo desenvolvedor.
 
 ---
 
-# 31. Critérios de qualidade
+# 44. Critérios de aceitação
 
-A implementação será avaliada considerando:
+O projeto deverá:
 
-### Responsabilidade
-
-Cada classe e método deve possuir uma responsabilidade clara.
-
-### Escopo
-
-Variáveis devem possuir o menor escopo necessário.
-
-### Legibilidade
-
-O código deve ser simples de compreender.
-
-### Reutilização
-
-Lógicas comuns devem ser reutilizadas em vez de duplicadas.
-
-### Performance
-
-Evitar processamento e chamadas HTTP desnecessárias.
-
-### Escalabilidade
-
-A arquitetura deve permitir aumento do volume de produtos e inclusão de novos ERPs.
-
-### Testabilidade
-
-As principais regras devem poder ser testadas sem depender de serviços externos.
-
-### Abstração
-
-A implementação deve permitir:
-
-```text
-ERP A
-ERP B
-ERP C
-ERP N
-      ↓
-Modelo interno comum
-      ↓
-Vesti
-```
+1. Iniciar através do Docker Compose;
+2. Executar sem banco de dados;
+3. Disponibilizar o ERP Mock;
+4. Disponibilizar `/erp/produtos.json`;
+5. Disponibilizar `/erp/variacoes.json`;
+6. Permitir consumo dessas APIs pelo Hub;
+7. Suportar XPTO;
+8. Suportar XYZ;
+9. Normalizar ambos para o mesmo modelo interno;
+10. Relacionar corretamente produtos e variações;
+11. Gerar o payload esperado pela Vesti;
+12. Enviar produtos através da API Vesti;
+13. Tratar erros de integração;
+14. Possuir testes automatizados;
+15. Possuir documentação;
+16. Possuir instruções de execução;
+17. Demonstrar uso de IA;
+18. Permitir inclusão de novos ERPs com baixo impacto no núcleo da aplicação.
 
 ---
 
-# 32. Restrições arquiteturais
+# 45. Princípio arquitetural
 
-Não:
-
-* Colocar toda a lógica no Controller;
-* Fazer chamadas HTTP diretamente no Controller;
-* Acoplar o Mapper à Vesti;
-* Acoplar a regra de negócio ao sistema de arquivos;
-* Utilizar o nome do produto como identificador;
-* Armazenar credenciais no código;
-* Criar banco de dados sem necessidade;
-* Fazer chamadas reais à Vesti nos testes;
-* Duplicar a lógica de sincronização para cada ERP.
-
-Preferir:
+O princípio central da aplicação é:
 
 ```text
-Interfaces
-DTOs
-Services
-Mappers
-Adapters/Clients
-Dependency Injection
-Automated Tests
-```
-
----
-
-# 33. Critério de aceitação principal
-
-Dado um conjunto de dados de qualquer ERP suportado:
-
-```text
-Produtos
-+
-Variações
-```
-
-o sistema deverá:
-
-```text
-1. Ler os dados;
-2. Identificar os produtos;
-3. Relacionar suas variações;
-4. Normalizar os dados;
-5. Criar um modelo interno comum;
-6. Converter para o formato exigido pela Vesti;
-7. Enviar o produto através da API;
-8. Tratar erros adequadamente.
-```
-
-O processo deverá funcionar independentemente da estrutura original do ERP, desde que exista um Adapter/Mapper correspondente.
-
----
-
-# 34. Princípio arquitetural
-
-O principal objetivo da arquitetura é separar:
-
-```text
-ORIGEM
-ERP
+SOURCE
   ↓
-ADAPTAÇÃO
-Mapper
+ERP API
   ↓
-DOMÍNIO
-ProductData
+ERP ADAPTER
   ↓
-DESTINO
-Vesti
+NORMALIZATION
+  ↓
+DOMAIN MODEL
+  ↓
+VESTI ADAPTER
+  ↓
+DESTINATION
 ```
 
-Dessa maneira, alterações na estrutura de um ERP não devem exigir alterações na integração com a Vesti.
+O núcleo do sistema não deve depender da estrutura específica de nenhum ERP.
 
-Da mesma forma, alterações na integração com a Vesti não devem exigir alterações nos Mappers dos ERPs.
+XPTO e XYZ são apenas fontes diferentes de dados que precisam produzir a mesma saída.
 
-A aplicação deve seguir o princípio:
+O objetivo final é:
 
 ```text
-"Novas integrações devem ser adicionadas,
-não exigir alterações no núcleo existente."
+ERP XPTO ──────┐
+               │
+ERP XYZ ───────┤
+               │
+ERP N ─────────┘
+               │
+               ▼
+         ProductData
+               │
+               ▼
+       VestiPayload
+               │
+               ▼
+          Vesti API
 ```
+
+A arquitetura deve favorecer extensibilidade sem introduzir complexidade desnecessária.
