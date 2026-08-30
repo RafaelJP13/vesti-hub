@@ -60,7 +60,12 @@ cp .env.example .env
 composer install
 ```
 
-5. Para executar com Docker:
+5. Criar key
+```env
+php artisan key:generate
+```
+
+6. Para executar com Docker:
 
 ```bash
 docker compose up -d --build
