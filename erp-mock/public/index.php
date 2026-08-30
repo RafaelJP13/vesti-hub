@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 $routes = [
-    '/erp/xpto/produtos.json' => __DIR__ . '/../../data/erpXpto/produtos-erp-xpto.json',
-    '/erp/xpto/variacoes.json' => __DIR__ . '/../../data/erpXpto/variacoes-erp-xpto.json',
-    '/erp/xyz/produtos.json' => __DIR__ . '/../../data/erpXyz/produtos-erp-xyz.json',
-    '/erp/xyz/variacoes.json' => __DIR__ . '/../../data/erpXyz/variacoes-erp-xyz.json',
+    '/erp/xpto/produtos.json' => __DIR__ . '/../data/erpxpto/produtos-erp.json',
+    '/erp/xpto/variacoes.json' => __DIR__ . '/../data/erpxpto/variacoes-erp.json',
+    '/erp/xyz/produtos.json' => __DIR__ . '/../data/erpxyz/produtos-erp.json',
+    '/erp/xyz/variacoes.json' => __DIR__ . '/../data/erpxyz/variacoes-erp.json',
 ];
 
 $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
